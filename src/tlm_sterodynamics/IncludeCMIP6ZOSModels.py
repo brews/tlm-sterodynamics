@@ -60,30 +60,22 @@ def CalcWeights(qlat, qlon, lat, lon, idwrad, idwpow, idwmin):
 
 
 def IDW(val, idw_weights, idw_idx):
-    # Apply the weights to the data
-    num = val[idw_idx[0], idw_idx[1], :] * idw_weights[:, np.newaxis]
+    x = val[
+        idw_idx[0], idw_idx[1]
+    ]  # Select lat/lon points corresponding to target locations.
+    not_nan_mask = ~np.isnan(x)
 
-    # Initialize the output
-    qval = []
+    # Broadcast weights to match x's dims. This should create and broadcast a dim for time.
+    w = np.broadcast_to(idw_weights[:, np.newaxis], val[idw_idx[0], idw_idx[1]].shape)
 
-    # Loop over the times
-    for i in np.arange(num.shape[1]):
-        # Identify which data points are valid for this year
-        good_idx = np.flatnonzero(~np.isnan(num[:, i]))
+    # Weighted sum for each year, but re-normalize weights to redistribute weight from x values with nans.
+    # NOTE: The 'RuntimeWarning: invalid value encountered in divide' here is common for years that will be masked out at the end of this function.
+    normalized_weighted_sum = np.nansum(x * w, axis=0) / np.sum(
+        w * not_nan_mask, axis=0
+    )
 
-        # Normalize num by the sum of valid weights at this time
-        if len(good_idx) > 0:
-            qval.append(np.sum(num[good_idx, i]) / np.sum(idw_weights[good_idx]))
-        else:
-            qval.append(np.nan)
-
-    # Convert the output to a numpy array
-    qval = np.array(qval)
-
-    # Apply the weights to the values
-    # qval = np.nansum(val[idw_idx[0], idw_idx[1],:] * idw_weights[:,np.newaxis], axis=0) / np.nansum(idw_weights)
-    # qval = np.sum(val[idw_idx[0], idw_idx[1],:] * idw_weights[:,np.newaxis], axis=0) / np.sum(idw_weights)
-
+    # Insert nans where x only had nans along the time dim.
+    qval = np.where(~not_nan_mask.any(axis=0), np.nan, normalized_weighted_sum)
     return qval
 
 
